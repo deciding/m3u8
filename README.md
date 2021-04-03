@@ -14,6 +14,13 @@ You only need to specify the flags(`u`, `o`, `c`) to run, downloader will automa
 - Decrypt TS
 - Merge TS
 
+## Install
+
+```
+go mod init github.com/oopsguy/m3u8
+go build -o build/m3u8 github.com/oopsguy/m3u8
+```
+
 ## Usage
 
 ### source

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -35,7 +36,10 @@ type Downloader struct {
 
 // NewTask returns a Task instance
 func NewTask(output string, url string) (*Downloader, error) {
-	result, err := parse.FromURL(url)
+	//m3u8_key_re := regexp.MustCompile(`"(.*)/(.*?\.key)"`)
+	//m3u8_key_re := regexp.MustCompile(`"(.*\.key)"`)
+	fileID := strings.TrimSuffix(filepath.Base(url), filepath.Ext(url))
+	result, lines, err := parse.FromURL(url)
 	if err != nil {
 		return nil, err
 	}
@@ -50,10 +54,59 @@ func NewTask(output string, url string) (*Downloader, error) {
 	} else {
 		folder = output
 	}
+	m3u8_file := filepath.Join(folder, fmt.Sprintf("%s.m3u8", fileID))
+	//ts_folder := filepath.Join(folder, fileID)
+	m3u8_key_file := filepath.Join(folder, fmt.Sprintf("%s.key", fileID))
+	if err != nil {
+		return nil, err
+	}
+	m3u8_f, err := os.Create(m3u8_file)
+	if err != nil {
+		return nil, err
+	}
+	m3u8_k, err := os.Create(m3u8_key_file)
+	if err != nil {
+		return nil, err
+	}
+	defer m3u8_f.Close()
+	defer m3u8_k.Close()
+	for _, line := range lines {
+		if strings.HasSuffix(line, ".ts") {
+			base := filepath.Base(line)
+			//ts_abs_path, err := filepath.Abs(ts_folder)
+			//if err != nil {
+			//	return nil, err
+			//}
+			//new_ts_path := filepath.Join(ts_abs_path, base)
+			new_ts_path := filepath.Join(fileID, base)
+			line = new_ts_path
+		}
+		if strings.HasSuffix(line, ".key\"") {
+			//abs_dir, err := filepath.Abs(folder)
+			//if err != nil {
+			//	return nil, err
+			//}
+			//line = m3u8_key_re.ReplaceAllString(line, fmt.Sprintf("\"%s/%s.key\"", abs_dir, fileID))
+			//line = m3u8_key_re.ReplaceAllString(line, fmt.Sprintf("\"%s.key\"", fileID))
+			continue
+		}
+		_, err := m3u8_f.WriteString(fmt.Sprintf("%s\n", line))
+		if err != nil {
+			return nil, err
+		}
+	}
+	_, err = m3u8_k.WriteString(fmt.Sprintf("%s\n", result.Keys[1]))
+	if err != nil {
+		return nil, err
+	}
+	m3u8_f.Sync()
+	m3u8_k.Sync()
+
 	if err := os.MkdirAll(folder, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("create storage folder failed: %s", err.Error())
 	}
-	tsFolder := filepath.Join(folder, tsFolderName)
+	//tsFolder := filepath.Join(folder, tsFolderName)
+	tsFolder := filepath.Join(folder, fileID)
 	if err := os.MkdirAll(tsFolder, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("create ts folder '[%s]' failed: %s", tsFolder, err.Error())
 	}
@@ -95,15 +148,17 @@ func (d *Downloader) Start(concurrency int) error {
 		limitChan <- struct{}{}
 	}
 	wg.Wait()
-	if err := d.merge(); err != nil {
-		return err
-	}
+	// We don't need to merge and delete the ts, just provide these segments to the client
+	//if err := d.merge(); err != nil {
+	//	return err
+	//}
 	return nil
 }
 
 func (d *Downloader) download(segIndex int) error {
-	tsFilename := tsFilename(segIndex)
+	//tsFilename := tsFilename(segIndex)
 	tsUrl := d.tsURL(segIndex)
+	tsFilename := filepath.Base(tsUrl)
 	b, e := tool.Get(tsUrl)
 	if e != nil {
 		return fmt.Errorf("request %s, %s", tsUrl, e.Error())

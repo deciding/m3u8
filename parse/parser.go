@@ -15,28 +15,28 @@ type Result struct {
 	Keys map[int]string
 }
 
-func FromURL(link string) (*Result, error) {
+func FromURL(link string) (*Result, []string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 	link = u.String()
 	body, err := tool.Get(link)
 	if err != nil {
-		return nil, fmt.Errorf("request m3u8 URL failed: %s", err.Error())
+		return nil, []string{}, fmt.Errorf("request m3u8 URL failed: %s", err.Error())
 	}
 	//noinspection GoUnhandledErrorResult
 	defer body.Close()
-	m3u8, err := parse(body)
+	m3u8, lines, err := parse(body)
 	if err != nil {
-		return nil, err
+		return nil, []string{}, err
 	}
 	if len(m3u8.MasterPlaylist) != 0 {
 		sf := m3u8.MasterPlaylist[0]
 		return FromURL(tool.ResolveURL(u, sf.URI))
 	}
 	if len(m3u8.Segments) == 0 {
-		return nil, errors.New("can not found any TS file description")
+		return nil, []string{}, errors.New("can not found any TS file description")
 	}
 	result := &Result{
 		URL:  u,
@@ -54,18 +54,18 @@ func FromURL(link string) (*Result, error) {
 			keyURL = tool.ResolveURL(u, keyURL)
 			resp, err := tool.Get(keyURL)
 			if err != nil {
-				return nil, fmt.Errorf("extract key failed: %s", err.Error())
+				return nil, []string{}, fmt.Errorf("extract key failed: %s", err.Error())
 			}
 			keyByte, err := ioutil.ReadAll(resp)
 			_ = resp.Close()
 			if err != nil {
-				return nil, err
+				return nil, []string{}, err
 			}
 			fmt.Println("decryption key: ", string(keyByte))
 			result.Keys[idx] = string(keyByte)
 		default:
-			return nil, fmt.Errorf("unknown or unsupported cryption method: %s", key.Method)
+			return nil, []string{}, fmt.Errorf("unknown or unsupported cryption method: %s", key.Method)
 		}
 	}
-	return result, nil
+	return result, lines, nil
 }
