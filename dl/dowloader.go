@@ -38,7 +38,7 @@ type Downloader struct {
 func NewTask(output string, url string) (*Downloader, error) {
 	//m3u8_key_re := regexp.MustCompile(`"(.*)/(.*?\.key)"`)
 	//m3u8_key_re := regexp.MustCompile(`"(.*\.key)"`)
-	fileID := strings.TrimSuffix(filepath.Base(url), filepath.Ext(url))
+	fileID := strings.TrimSuffix(filepath.Base(url), filepath.Ext(url)) + String(10)
 	result, lines, err := parse.FromURL(url)
 	if err != nil {
 		return nil, err
@@ -55,12 +55,14 @@ func NewTask(output string, url string) (*Downloader, error) {
 		folder = output
 	}
 	m3u8_file := filepath.Join(folder, fmt.Sprintf("%s.m3u8", fileID))
+	m3u8_org_file := filepath.Join(folder, fmt.Sprintf("%s_org.m3u8", fileID))
 	//ts_folder := filepath.Join(folder, fileID)
 	m3u8_key_file := filepath.Join(folder, fmt.Sprintf("%s.key", fileID))
+	m3u8_f, err := os.Create(m3u8_file)
 	if err != nil {
 		return nil, err
 	}
-	m3u8_f, err := os.Create(m3u8_file)
+	m3u8_fo, err := os.Create(m3u8_org_file)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +71,13 @@ func NewTask(output string, url string) (*Downloader, error) {
 		return nil, err
 	}
 	defer m3u8_f.Close()
+	defer m3u8_fo.Close()
 	defer m3u8_k.Close()
 	for _, line := range lines {
+		_, err := m3u8_fo.WriteString(fmt.Sprintf("%s\n", line))
+		if err != nil {
+			return nil, err
+		}
 		if strings.HasSuffix(line, ".ts") {
 			base := filepath.Base(line)
 			//ts_abs_path, err := filepath.Abs(ts_folder)
@@ -90,7 +97,7 @@ func NewTask(output string, url string) (*Downloader, error) {
 			//line = m3u8_key_re.ReplaceAllString(line, fmt.Sprintf("\"%s.key\"", fileID))
 			continue
 		}
-		_, err := m3u8_f.WriteString(fmt.Sprintf("%s\n", line))
+		_, err = m3u8_f.WriteString(fmt.Sprintf("%s\n", line))
 		if err != nil {
 			return nil, err
 		}
