@@ -88,7 +88,7 @@ func NewTask(output string, url string) (*Downloader, error) {
 			new_ts_path := filepath.Join(fileID, base)
 			line = new_ts_path
 		}
-		if strings.HasSuffix(line, ".key\"") {
+		if strings.HasPrefix(line, "#EXT-X-KEY") {
 			//abs_dir, err := filepath.Abs(folder)
 			//if err != nil {
 			//	return nil, err
