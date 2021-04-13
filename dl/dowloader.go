@@ -159,6 +159,12 @@ func (d *Downloader) Start(concurrency int) error {
 	//if err := d.merge(); err != nil {
 	//	return err
 	//}
+	
+	cfilename := filepath.Join(d.tsFolder, "completed")
+	_, err := os.Create(cfilename)
+	if err != nil {
+		return fmt.Errorf("create file: %s, %s", cfilename, err.Error())
+	}
 	return nil
 }
 
