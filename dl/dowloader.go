@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"os/exec"
+	"math/rand"
 
 	"github.com/oopsguy/m3u8/parse"
 	"github.com/oopsguy/m3u8/tool"
@@ -19,6 +21,7 @@ const (
 	tsExt            = ".ts"
 	tsFolderName     = "ts"
 	mergeTSFilename  = "main.ts"
+	mergeMP4Filename = "preview.mp4"
 	tsTempFileSuffix = "_tmp"
 	progressWidth    = 40
 )
@@ -54,6 +57,7 @@ func NewTask(output string, url string) (*Downloader, error) {
 	} else {
 		folder = output
 	}
+	fmt.Printf("\n[FILEID] %s\n", fileID)
 	m3u8_file := filepath.Join(folder, fmt.Sprintf("%s.m3u8", fileID))
 	m3u8_org_file := filepath.Join(folder, fmt.Sprintf("%s_org.m3u8", fileID))
 	//ts_folder := filepath.Join(folder, fileID)
@@ -159,6 +163,9 @@ func (d *Downloader) Start(concurrency int) error {
 	//if err := d.merge(); err != nil {
 	//	return err
 	//}
+	if err := d.preview(); err != nil {
+		return err
+	}
 	
 	cfilename := filepath.Join(d.tsFolder, "completed")
 	_, err := os.Create(cfilename)
@@ -252,6 +259,73 @@ func (d *Downloader) back(segIndex int) error {
 		return fmt.Errorf("invalid segment index: %d", segIndex)
 	}
 	d.queue = append(d.queue, segIndex)
+	return nil
+}
+
+func (d *Downloader) preview() error {
+	// In fact, the number of downloaded segments should be equal to number of m3u8 segments
+	missingCount := 0
+	for idx := 0; idx < d.segLen; idx++ {
+		tsFilename := tsFilename(idx)
+		f := filepath.Join(d.tsFolder, tsFilename)
+		if _, err := os.Stat(f); err != nil {
+			missingCount++
+		}
+	}
+	if missingCount > 0 {
+		fmt.Printf("[warning] %d files missing\n", missingCount)
+	}
+
+	// Create a TS file for merging, all segment files will be written to this file.
+	mFilePath := filepath.Join(d.tsFolder, mergeTSFilename)
+	mMP4Path := filepath.Join(d.tsFolder, mergeMP4Filename)
+	mFile, err := os.Create(mFilePath)
+	if err != nil {
+		return fmt.Errorf("create main TS file failed：%s", err.Error())
+	}
+	//noinspection GoUnhandledErrorResult
+	defer mFile.Close()
+
+	writer := bufio.NewWriter(mFile)
+	mergedCount := 0
+	var tsPaths [3]string
+	// for segIndex := 0; segIndex < d.segLen; segIndex++ {
+	for ind := 0; ind < 3; ind++ {
+		randomIndex := rand.Intn(d.segLen/3)
+		segIndex := randomIndex + d.segLen/3*ind
+		tsFilename := filepath.Base(d.tsURL(segIndex))
+		tsPaths[ind] = filepath.Join(d.tsFolder, tsFilename)
+		bytes, err := ioutil.ReadFile(filepath.Join(d.tsFolder, tsFilename))
+		_, err = writer.Write(bytes)
+		if err != nil {
+			continue
+		}
+		mergedCount++
+		tool.DrawProgressBar("merge",
+			float32(mergedCount)/float32(d.segLen), progressWidth)
+	}
+	_ = writer.Flush()
+	// Remove `ts` folder
+	// _ = os.RemoveAll(d.tsFolder)
+
+	if mergedCount != d.segLen {
+		fmt.Printf("[warning] \n%d files merge failed", d.segLen-mergedCount)
+	}
+
+	fmt.Printf("\n[output] %s\n", mFilePath)
+	// ffmpeg -i tmp/indexddCgU3KDbU/8Y5GxQYR.ts -i tmp/indexddCgU3KDbU/7KXC8XpS.ts -filter_complex "concat=n=2:v=1:a=0" -strict -2 preview.mp4
+	//fmt.Print("ffmpeg " + "-i " + tsPaths[0] + " -i " + tsPaths[1] + " -i " + tsPaths[2] + " -filter_complex " + "'concat=n=3:v=1:a=0' " + "-strict " + "-2 " + "-y " + mMP4Path + "\n")
+	// cmd := exec.Command("ffmpeg", "-i", tsPaths[0], "-i", tsPaths[1], "-i", tsPaths[2], "-filter_complex", "'concat=n=3:v=1:a=0'", "-strict", "-2", "-y", mMP4Path)
+	cmd := exec.Command("ffmpeg", "-i", mFilePath, "-strict", "-2", "-vcodec", "copy", mMP4Path)
+	stdout, err := cmd.Output()
+    // Print the output
+    fmt.Println(string(stdout))
+    if err != nil {
+        fmt.Println(err.Error())
+        return nil
+    }
+	fmt.Printf("\n[output] %s\n", mMP4Path)
+
 	return nil
 }
 
